@@ -2,7 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import os
 import matplotlib.pyplot as plt
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 
 st.set_page_config(page_title="Churn Dashboard", page_icon="🏦", layout="wide")
 
@@ -13,181 +18,244 @@ st.markdown("""
 * { font-family: 'Inter', sans-serif; }
 
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background: linear-gradient(270deg, #ffffff, #f5f5f5, #e8e8e8, #f0f0f0, #ffffff);
+    background-size: 400% 400%;
+    animation: gradientMove 8s ease infinite;
     min-height: 100vh;
 }
 
+@keyframes gradientMove {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+[data-testid="stHeader"] { background: transparent; }
 [data-testid="stSidebar"] {
-    background: rgba(255,255,255,0.08) !important;
+    background: rgba(255,255,255,0.75) !important;
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
-    border-right: 1px solid rgba(255,255,255,0.2);
+    border-right: 1px solid rgba(0,0,0,0.08);
 }
-[data-testid="stSidebar"] * { color: white !important; }
-[data-testid="stSidebar"] .stSlider > div > div { background: rgba(255,255,255,0.3) !important; }
-
-[data-testid="stHeader"] { background: transparent; }
-
+[data-testid="stSidebar"] * { color: #1a1a1a !important; }
+[data-testid="stSidebar"] .stSelectbox > div > div {
+    background: rgba(255,255,255,0.95) !important;
+    color: #1a1a1a !important;
+    border: 1px solid rgba(0,0,0,0.12) !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSidebar"] .stNumberInput > div > div > input {
+    background: rgba(255,255,255,0.95) !important;
+    color: #1a1a1a !important;
+    border: 1px solid rgba(0,0,0,0.12) !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSidebar"] .stNumberInput button {
+    background: rgba(255,255,255,0.95) !important;
+    color: #1a1a1a !important;
+    border: 1px solid rgba(0,0,0,0.12) !important;
+}
+[data-testid="stSidebar"] .stNumberInput > div {
+    background: rgba(255,255,255,0.95) !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSidebar"] select,
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] input[type="number"] {
+    background: rgba(255,255,255,0.95) !important;
+    color: #1a1a1a !important;
+}
+[data-testid="stSidebar"] .stSlider > div > div > div {
+    background: #4c6ef5 !important;
+}
 .metric-card {
-    background: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.7);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.35);
+    border: 1px solid rgba(255,255,255,0.9);
     border-radius: 20px;
     padding: 24px 16px;
     text-align: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     animation: fadeSlideUp 0.6s ease forwards;
 }
 .metric-card:hover {
     transform: translateY(-6px);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.12);
 }
 .metric-value {
     font-size: 2rem;
     font-weight: 700;
-    color: white !important;
-    -webkit-text-fill-color: white !important;
+    color: #1a1a1a !important;
+    -webkit-text-fill-color: #1a1a1a !important;
 }
 .metric-label {
     font-size: 0.75rem;
-    color: rgba(255,255,255,0.75) !important;
+    color: #666666 !important;
     margin-top: 6px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 .metric-icon { font-size: 1.6rem; margin-bottom: 8px; }
-
 .card {
-    background: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.65);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.3);
+    border: 1px solid rgba(255,255,255,0.9);
     border-radius: 20px;
     padding: 24px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.3);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9);
     margin-bottom: 20px;
     animation: fadeSlideUp 0.7s ease forwards;
     transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 .card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 16px 40px rgba(0,0,0,0.2);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.1);
 }
 .card h3 {
-    color: white !important;
+    color: #1a1a1a !important;
     font-size: 1.05rem;
     font-weight: 600;
     margin: 0 0 16px 0;
 }
-
 .result-high {
-    background: rgba(224,49,49,0.25);
+    background: rgba(224,49,49,0.08);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,100,100,0.4);
-    border-left: 5px solid #ff6b6b;
+    border: 1px solid rgba(224,49,49,0.25);
+    border-left: 5px solid #e03131;
     border-radius: 14px;
     padding: 20px;
     animation: pulse-red 2s infinite;
 }
-.result-high h3 { color: #ff6b6b !important; margin: 0; }
-.result-high h2 { color: #ff6b6b !important; margin: 4px 0 0; }
-.result-high p  { color: rgba(255,255,255,0.8) !important; margin: 6px 0; }
-
+.result-high h3 { color: #c92a2a !important; margin: 0; }
+.result-high h2 { color: #c92a2a !important; margin: 4px 0 0; }
+.result-high p  { color: #555555 !important; margin: 6px 0; }
 .result-low {
-    background: rgba(45,158,96,0.25);
+    background: rgba(45,158,96,0.08);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(100,220,150,0.4);
-    border-left: 5px solid #69db7c;
+    border: 1px solid rgba(45,158,96,0.25);
+    border-left: 5px solid #2d9e60;
     border-radius: 14px;
     padding: 20px;
 }
-.result-low h3 { color: #69db7c !important; margin: 0; }
-.result-low h2 { color: #69db7c !important; margin: 4px 0 0; }
-.result-low p  { color: rgba(255,255,255,0.8) !important; margin: 6px 0; }
-
+.result-low h3 { color: #2b8a3e !important; margin: 0; }
+.result-low h2 { color: #2b8a3e !important; margin: 4px 0 0; }
+.result-low p  { color: #555555 !important; margin: 6px 0; }
 .page-title {
     font-size: 2.2rem;
     font-weight: 700;
-    color: white !important;
+    color: #1a1a1a !important;
     margin-bottom: 4px;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
 .page-subtitle {
-    color: rgba(255,255,255,0.75) !important;
+    color: #666666 !important;
     font-size: 0.95rem;
     margin-bottom: 24px;
 }
-
 .risk-item {
     padding: 10px 14px;
     border-radius: 10px;
     margin: 6px 0;
     font-size: 0.88rem;
-    color: white !important;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
+    color: #1a1a1a !important;
+    background: rgba(255,255,255,0.6);
+    border: 1px solid rgba(0,0,0,0.07);
     transition: background 0.2s ease;
 }
-.risk-item:hover { background: rgba(255,255,255,0.22); }
-
+.risk-item:hover { background: rgba(255,255,255,0.95); }
 .divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(0,0,0,0.12), transparent);
     margin: 16px 0;
 }
-
 [data-testid="stAppViewContainer"] p,
 [data-testid="stAppViewContainer"] label,
-[data-testid="stAppViewContainer"] span {
-    color: white !important;
-}
-
+[data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] div { color: #1a1a1a !important; }
 .stProgress > div > div {
-    background: linear-gradient(90deg, #69db7c, #f5a623, #ff6b6b) !important;
+    background: linear-gradient(90deg, #2d9e60, #f5a623, #e03131) !important;
     border-radius: 10px;
 }
-
 @keyframes fadeSlideUp {
     from { opacity: 0; transform: translateY(20px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes pulse-red {
-    0%,100% { box-shadow: 0 0 0 0 rgba(255,107,107,0.3); }
-    50%      { box-shadow: 0 0 0 10px rgba(255,107,107,0); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(224,49,49,0.15); }
+    50%      { box-shadow: 0 0 0 8px rgba(224,49,49,0); }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Load model ─────────────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
+CATEGORICAL = ["Geography", "Gender"]
+NUMERICAL   = [
+    "CreditScore", "Age", "Tenure", "Balance", "NumOfProducts",
+    "HasCrCard", "IsActiveMember", "EstimatedSalary",
+    "BalanceSalaryRatio", "TenureByAge", "CreditScoreByAge",
+    "ZeroBalance", "ProductsPerTenure"
+]
+
+# ── Train model from scratch ───────────────────────────────────────────────────
+def train_model():
+    df = pd.read_csv("data/Churn_Modelling.csv")
+    df.drop(columns=["RowNumber", "CustomerId", "Surname"], inplace=True)
+    df["BalanceSalaryRatio"] = df["Balance"] / (df["EstimatedSalary"] + 1)
+    df["TenureByAge"]        = df["Tenure"] / df["Age"]
+    df["CreditScoreByAge"]   = df["CreditScore"] / df["Age"]
+    df["ZeroBalance"]        = (df["Balance"] == 0).astype(int)
+    df["ProductsPerTenure"]  = df["NumOfProducts"] / (df["Tenure"] + 1)
+    X = df[CATEGORICAL + NUMERICAL]
+    y = df["Exited"]
+    preprocessor = ColumnTransformer([
+        ("num", StandardScaler(), NUMERICAL),
+        ("cat", OneHotEncoder(drop="first", sparse_output=False), CATEGORICAL),
+    ])
+    model = Pipeline([
+        ("pre", preprocessor),
+        ("clf", GradientBoostingClassifier(n_estimators=200, learning_rate=0.05, random_state=42))
+    ])
+    model.fit(X, y)
+    os.makedirs("models", exist_ok=True)
+    pickle.dump(model, open("models/churn_model.pkl", "wb"))
+    return model
+
+# ── Load or retrain model ──────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    model    = pickle.load(open("models/churn_model.pkl", "rb"))
-    metadata = pickle.load(open("models/metadata.pkl",    "rb"))
-    return model, metadata
+    try:
+        model = pickle.load(open("models/churn_model.pkl", "rb"))
+        test  = pd.DataFrame([{
+            "Geography": "France", "Gender": "Male", "CreditScore": 650,
+            "Age": 40, "Tenure": 5, "Balance": 50000, "NumOfProducts": 1,
+            "HasCrCard": 1, "IsActiveMember": 1, "EstimatedSalary": 80000,
+            "BalanceSalaryRatio": 0.6, "TenureByAge": 0.1,
+            "CreditScoreByAge": 16.0, "ZeroBalance": 0, "ProductsPerTenure": 0.2
+        }])
+        model.predict(test)
+        return model
+    except Exception:
+        return train_model()
 
-model, metadata = load_model()
+model = load_model()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🏦 ChurnPredict AI")
     st.markdown("*Bank Customer Analytics*")
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-
     st.markdown("### 👤 Customer Info")
     geography = st.selectbox("Country",  ["France", "Germany", "Spain"])
     gender    = st.selectbox("Gender",   ["Male", "Female"])
     age       = st.slider("Age", 18, 92, 40)
     tenure    = st.slider("Years with Bank", 0, 10, 5)
-
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("### 💰 Financial Info")
     credit_score = st.slider("Credit Score", 300, 850, 650)
     balance      = st.number_input("Balance ($)",     0.0, 300000.0, 50000.0, step=1000.0)
     salary       = st.number_input("Est. Salary ($)", 0.0, 300000.0, 80000.0, step=1000.0)
-
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("### 🏦 Account Details")
     num_products = st.selectbox("No. of Products", [1, 2, 3, 4])
@@ -218,11 +286,11 @@ churned = proba >= 0.5
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 st.markdown('<p class="page-title">🏦 Customer Churn Dashboard</p>', unsafe_allow_html=True)
-st.markdown('<p class="page-subtitle">Real-time churn risk prediction • Powered by Machine Learning</p>', unsafe_allow_html=True)
+st.markdown('<p class="page-subtitle">Real-time churn risk prediction</p>', unsafe_allow_html=True)
 
 # ── Metric cards ───────────────────────────────────────────────────────────────
 c1, c2, c3, c4 = st.columns(4)
-risk_color = "#ff6b6b" if churned else "#69db7c"
+risk_color = "#c92a2a" if churned else "#2b8a3e"
 
 with c1:
     st.markdown(f"""<div class="metric-card">
@@ -230,21 +298,18 @@ with c1:
         <div class="metric-value">{credit_score}</div>
         <div class="metric-label">Credit Score</div>
     </div>""", unsafe_allow_html=True)
-
 with c2:
     st.markdown(f"""<div class="metric-card">
         <div class="metric-icon">💰</div>
         <div class="metric-value">${balance:,.0f}</div>
         <div class="metric-label">Account Balance</div>
     </div>""", unsafe_allow_html=True)
-
 with c3:
     st.markdown(f"""<div class="metric-card">
         <div class="metric-icon">📅</div>
         <div class="metric-value">{tenure} yrs</div>
         <div class="metric-label">Tenure</div>
     </div>""", unsafe_allow_html=True)
-
 with c4:
     st.markdown(f"""<div class="metric-card">
         <div class="metric-icon">⚠️</div>
@@ -258,26 +323,24 @@ st.markdown("<br>", unsafe_allow_html=True)
 left, right = st.columns([1.2, 1])
 
 with left:
-    # Gauge chart
     st.markdown('<div class="card"><h3>📊 Churn Probability Gauge</h3>', unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(6, 3))
     fig.patch.set_alpha(0)
     ax.set_facecolor("none")
     categories = ["Very Low\n0–25%", "Low\n25–50%", "Medium\n50–75%", "High\n75–100%"]
     colors     = ["#2d9e60", "#74c476", "#f5a623", "#e03131"]
-    ax.barh(categories, [25,25,25,25], color=colors, edgecolor="white", height=0.5, alpha=0.9)
-    ax.axvline(proba*100, color="white", linewidth=3, linestyle="--", label=f"Risk: {proba:.0%}")
+    ax.barh(categories, [25,25,25,25], color=colors, edgecolor="white", height=0.5, alpha=0.85)
+    ax.axvline(proba*100, color="#1a1a1a", linewidth=3, linestyle="--", label=f"Risk: {proba:.0%}")
     ax.set_xlim(0, 100)
-    ax.set_xlabel("Churn Probability (%)", color="white")
-    ax.tick_params(colors="white")
+    ax.set_xlabel("Churn Probability (%)", color="#1a1a1a")
+    ax.tick_params(colors="#1a1a1a")
     for spine in ax.spines.values(): spine.set_visible(False)
-    ax.legend(loc="lower right", framealpha=0.2, labelcolor="white", facecolor="white")
+    ax.legend(loc="lower right", framealpha=0.4, labelcolor="#1a1a1a")
     plt.tight_layout()
     st.pyplot(fig, transparent=True)
     plt.close()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Profile chart
     st.markdown('<div class="card"><h3>📈 Customer Profile</h3>', unsafe_allow_html=True)
     features_display = {
         "Credit Score": credit_score / 850,
@@ -290,12 +353,12 @@ with left:
     fig2, ax2 = plt.subplots(figsize=(6, 3))
     fig2.patch.set_alpha(0)
     ax2.set_facecolor("none")
-    bar_colors = ["#a78bfa" if v > 0.5 else "#f9a8d4" for v in features_display.values()]
+    bar_colors = ["#4c6ef5" if v > 0.5 else "#94d82d" for v in features_display.values()]
     ax2.barh(list(features_display.keys()), list(features_display.values()),
-             color=bar_colors, edgecolor="white", alpha=0.9)
+             color=bar_colors, edgecolor="white", alpha=0.85)
     ax2.set_xlim(0, 1)
-    ax2.set_xlabel("Normalised Value", color="white")
-    ax2.tick_params(colors="white")
+    ax2.set_xlabel("Normalised Value", color="#1a1a1a")
+    ax2.tick_params(colors="#1a1a1a")
     for spine in ax2.spines.values(): spine.set_visible(False)
     plt.tight_layout()
     st.pyplot(fig2, transparent=True)
@@ -303,7 +366,6 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    # Prediction result
     st.markdown('<div class="card"><h3>🎯 Prediction Result</h3>', unsafe_allow_html=True)
     if churned:
         st.markdown(f"""<div class="result-high">
@@ -321,7 +383,6 @@ with right:
     st.progress(float(proba))
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Risk factors
     st.markdown('<div class="card"><h3>⚠️ Risk Factors</h3>', unsafe_allow_html=True)
     risks = []
     if age > 55:               risks.append(("🔴", "Older customer — higher churn tendency"))
@@ -336,7 +397,6 @@ with right:
         st.markdown(f'<div class="risk-item">{icon} {text}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Recommended actions
     st.markdown('<div class="card"><h3>💡 Recommended Actions</h3>', unsafe_allow_html=True)
     if proba >= 0.7:
         actions = ["🚨 Assign relationship manager immediately",
